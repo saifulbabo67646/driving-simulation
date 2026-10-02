@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tobu Driving Test Sim</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="loading"><div class="spinner"></div><p id="loading-msg">Loading…</p></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="instr"><div id="instr-ja"></div><div id="instr-en"></div></div>
+  <div id="next" class="panel">
+    <div class="panel-title">NEXT <span id="next-dist"></span></div>
+    <div id="next-label"></div>
+    <div id="next-checks"></div>
+  </div>
+  <div id="score" class="panel">
+    <div class="panel-title">持ち点 SCORE</div>
+    <div id="score-val">100</div>
+    <ul id="demerit-list"></ul>
+  </div>
+  <div id="dash">
+    <div id="blink-l" class="blink">◀</div>
+    <div class="spd"><span id="speed-val">0</span><small>km/h</small></div>
+    <div id="blink-r" class="blink">▶</div>
+    <div id="gear"></div>
+  </div>
+  <div id="look"></div>
+  <div id="toasts"></div>
+  <canvas id="minimap"></canvas>
+  <div id="keys-hint">↑↓ accel/brake · ←→ steer · Q/E signal · Z/X/C mirrors (hold Z/C = shoulder check) · P parking brake · G gear · V view · M map · H help · Esc pause</div>
+</div>
+
+<!-- start menu -->
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1>東部運転免許センター <span>技能試験シミュレーター</span></h1>
+    <p class="sub">Tobu Driving License Center · Numazu, Shizuoka — 3D practice for the 外国免許切替 (foreign licence conversion) driving test</p>
+    <div class="row">
+      <label>Course コース</label>
+      <div class="seg">
+        <button data-set="course" data-val="course1">1コース</button>
+        <button data-set="course" data-val="course2" disabled title="Send the course 2 map to add it">2コース</button>
+        <button data-set="course" data-val="course3" disabled title="Send the course 3 map to add it">3コース</button>
+        <button data-set="course" data-val="course4" disabled title="Send the course 4 map to add it">4コース</button>
+      </div>
+    </div>
+    <div class="row">
+      <label>Mode</label>
+      <div class="seg">
+        <button data-set="mode" data-val="practice">練習 Practice <small>route line, check dots, live scoring</small></button>
+        <button data-set="mode" data-val="exam">本番 Exam <small>examiner voice only, result at the end</small></button>
+      </div>
+    </div>
+    <div class="row">
+      <label>Steering</label>
+      <div class="seg">
+        <button data-set="steering" data-val="keyboard">Keyboard</button>
+        <button data-set="steering" data-val="mouse">Mouse <small>x-position</small></button>
+      </div>
+      <span class="muted small">Gamepads / steering wheels are detected automatically.</span>
+    </div>
+    <div class="row grid2">
+      <div><label>Keyboard steering speed <b id="steer-val"></b></label><input id="opt-steer" type="range" min="120" max="600" step="20"></div>
+      <div><label>Field of view <b id="fov-val"></b></label><input id="opt-fov" type="range" min="50" max="90" step="1"></div>
+    </div>
+    <div class="row">
+      <label>Graphics</label>
+      <div class="seg">
+        <button data-set="quality" data-val="high">High</button>
+        <button data-set="quality" data-val="low">Low <small>(reload)</small></button>
+      </div>
+      <label>Voice</label>
+      <div class="seg">
+        <button data-set="voiceLang" data-val="ja">日本語</button>
+        <button data-set="voiceLang" data-val="en">English</button>
+      </div>
+    </div>
+    <div class="row checks">
+      <label><input type="checkbox" id="opt-voice"> Examiner voice</label>
+      <label><input type="checkbox" id="opt-sound"> Sounds</label>
+      <label><input type="checkbox" id="opt-guide"> Next-action checklist</label>
+      <label><input type="checkbox" id="opt-route"> Route line</label>
+      <label><input type="checkbox" id="opt-dots"> Mirror/Signal/Visual dots</label>
+    </div>
+    <div class="actions">
+      <button id="btn-start" class="primary">Start 開始</button>
+      <button class="btn-help">Controls &amp; rules</button>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="overlay">
+  <div class="card small">
+    <h2>一時停止 Paused</h2>
+    <div class="actions col">
+      <button id="btn-resume" class="primary">Resume</button>
+      <button id="btn-restart">Restart course</button>
+      <button class="btn-help">Controls &amp; rules</button>
+      <button id="btn-menu">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="result" class="overlay">
+  <div class="card">
+    <h2>試験結果 Result</h2>
+    <div id="result-body"></div>
+    <div class="actions">
+      <button id="btn-again" class="primary">Try again</button>
+      <button id="btn-result-menu">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="help" class="overlay">
+  <div class="card wide">
+    <h2>Controls &amp; how the test is scored</h2>
+    <div class="cols">
+      <div>
+        <h3>Driving (AT car, right-hand drive)</h3>
+        <table class="keys">
+          <tr><td>↑ / W</td><td>Accelerator (hold Shift for more)</td></tr>
+          <tr><td>↓ / S / Space</td><td>Brake</td></tr>
+          <tr><td>← → / A D</td><td>Turn the steering wheel</td></tr>
+          <tr><td>Q / E</td><td>Left / right turn signal (ウインカー)</td></tr>
+          <tr><td>Z</td><td>Left door mirror — keep holding = left shoulder check (左後方目視)</td></tr>
+          <tr><td>C</td><td>Right door mirror — keep holding = right shoulder check</td></tr>
+          <tr><td>X</td><td>Rear-view mirror (ルームミラー)</td></tr>
+          <tr><td>Right mouse drag</td><td>Look around freely</td></tr>
+          <tr><td>B</td><td>Seatbelt</td></tr>
+          <tr><td>G</td><td>Shift P ↔ D (hold the brake)</td></tr>
+          <tr><td>R / N</td><td>Reverse / neutral</td></tr>
+          <tr><td>P</td><td>Parking brake (サイドブレーキ)</td></tr>
+          <tr><td>V</td><td>Driver / chase / top view</td></tr>
+          <tr><td>M</td><td>Map size · T route line on/off</td></tr>
+          <tr><td>Backspace</td><td>Practice: back to the last checkpoint</td></tr>
+        </table>
+        <p class="muted small">Gamepad: left stick steer, RT/LT pedals, LB/RB signals, X/B look left/right, Y rear mirror, A parking brake, Start = gear. Steering wheels (G29/G920/T300…) use wheel + pedal axes.</p>
+      </div>
+      <div>
+        <h3>Japanese test routine</h3>
+        <ol class="routine">
+          <li><span class="dot g"></span><b>ミラー</b> rear-view + door mirror on the side you are going to.</li>
+          <li><span class="dot b"></span><b>合図</b> signal <b>30 m</b> before a turn, <b>3 s</b> before a lane change.</li>
+          <li><span class="dot r"></span><b>目視</b> shoulder check right before you turn / move over.</li>
+        </ol>
+        <ul class="rules">
+          <li>Keep left. Left turns: hug the left. Right turns: go close to the centre line.</li>
+          <li><b>止まれ</b> and <b>踏切</b>: stop with the front bumper just before the line, look left &amp; right (Z then C), then go.</li>
+          <li>Traffic light: never enter on red; amber only if you cannot stop safely.</li>
+          <li>S字 / クランク: slowly (≤ 10 km/h), no wheel over the kerb, don't touch the poles.</li>
+          <li>坂道: stop on the slope, then move off without rolling back.</li>
+          <li>Outer straight: accelerate to about 40 km/h, never above 40.</li>
+          <li>Finish at 発着点: signal left, pull in within 30 cm of the kerb, stop at the mark, P + parking brake.</li>
+        </ul>
+        <p class="muted small">Scoring: start with 100 points, pass with 70+. Typical demerits: no signal −10, late signal −5, safety check missed −10, kerb −20, pole −20, harsh braking −10. 試験中止 (instant fail): running a stop line, level crossing or red light, rolling back ≥ 1 m. Values are approximate — they follow the usual 減点 table.</p>
+      </div>
+    </div>
+    <div class="actions"><button id="btn-help-close" class="primary">Close</button></div>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
